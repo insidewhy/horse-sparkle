@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "strict": true,
+    "lib": ["es2018", "dom"],
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "preserveWatchOutput": true,
+    "outDir": "../dist.esm2018",
+    "target": "es2018"
+  }
+}
