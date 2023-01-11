@@ -4,15 +4,19 @@
 [![Known Vulnerabilities](https://snyk.io/test/github/insidewhy/horse-sparkle/badge.svg)](https://snyk.io/test/github/insidewhy/horse-sparkle)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
 
-A flexible and easy to use work queue for JavaScript/TypeScript environments and browsers.
+A work queue for JavaScript/TypeScript environments capable of avoiding repetition of work on failure and with bounded memory usage and flexible error handling.
 
-- Queue up multiple pieces of work into a queue.
+- Allows adding work to a queue to be processed one at a time and in order.
 - Puts work to the back of the queue when it fails.
-- Resumes work from where it failed rather than having to restart it (using async generators).
-- Allows limiting the size of the queue to avoid unbounded memory usage.
+- Resumes work from where it failed rather than having to restart it from scratch (via the power of async iterators).
+- Allows limiting the size of the queue to avoid unbounded memory usage:
   - Context is associated with each piece of work, after failure the memory associated with the work is reclaimed but the context can be used to recreate it from scratch.
-  - Overflows are consumed as an async generator, this can requeue the work when the queue is empty or provide any other programmable behaviour.
-- Can customise the behaviour which occurs when a failure is detected, e.g. the processing of the queue may be suspended for a certain time period and this period may increase on consecutive failures.
+  - Overflows are consumed from an async generator, the user may recreate the work from the associated context when the queue is empty, throw it away, or perform any other action they want.
+- Can customise the behaviour which occurs when a failure is detected:
+  - The queue awaits the error handler which can be used to add delays on failure.
+  - The consecutive failure count is passed to the error handler which may be used for exponential backoff.
+
+`horse-sparkle` is written in TypeScript and the project includes extensive unit testing.
 
 ## Documentation
 
@@ -24,7 +28,7 @@ It can be useful to create a queue of work, and on error, it may not be great to
 ```typescript
 import { yieldErrors, WorkQueue, WorkIterator } from 'horse-sparkle'
 
-async function* doWork(db: string): WorkIterator {
+async function* doWork(dbId: string): WorkIterator {
   const largeObject = yield* yieldErrors(() => grabLargeObjectFromDatabase(dbId))
   const bigResult = yield* yieldErrors(() => doExpensiveProcessingOnObject(largeObject))
   yield* yieldErrors(() => doFinalProcessingOfBigResult(bigResult))
@@ -35,7 +39,7 @@ async function* doWork(db: string): WorkIterator {
 const queue = new WorkQueue<string>()
 queue.start()
 
-function processDatabaseItem(dbId: string) {
+function doWorkInTurn(dbId: string): void {
   // The dbId relates to the <string> generic used above
   queue.queueWork(dbId, doWork(dbId))
 }
@@ -54,8 +58,10 @@ This can be solved using the `onError` parameter to `WorkQueue`:
 
 ```typescript
 const queue = new WorkQueue({
-  onError: (error: Error | undefined, consecutiveErrorCount: number) =>
+  onError: (error: Error | undefined, consecutiveErrorCount: number): Promise<void> => {
+    console.error("Work queue error", error)
     delay(Math.min(2 ** (consecutiveErrorCount - 1) * 100, 400)),
+  }
 })
 ```
 
@@ -72,43 +78,40 @@ The `WorkQueue` accepts a `maxQueueLength` parameter for dealing with this.
 const queue = new WorkQueue({ maxQueueLength: 100 })
 ```
 
-However it would probably not be useful to completely throw the work away, instead we may wish to queue the work again later but throw away the memory until it is queued again.
-The context parameter can then be used to restart the job from scratch, it will be more expensive to repeat the processing but at least the memory usage will be significantly less.
-To facilitate this `WorkQueue` provides a method `overflows` that returns a generator which yields the context related with each piece of work that was thrown out of the queue due to an overflow.
+However it would probably not be useful to completely throw the work away, instead it may be good to reclaim the memory associated with the async iterator and create the work again from scratch later.
+The context parameter can then be used to do this, it will be more expensive to repeat the processing but at least the memory usage will have a maximum limit.
+To facilitate this `WorkQueue` provides a method `overflows` that returns an async iterator which yields the context related with each piece of work that was thrown out of the queue due to an overflow.
 The `waitForSpaceInWorkQueue` method can be used to asynchronously wait for the queue to have space in order to requeue the work if desired.
 Repeating the example above:
 
 ```typescript
 import { yieldErrors, WorkQueue, WorkIterator } from 'horse-sparkle'
 
-async function* doWork(db: string): WorkIterator {
-  const largeObject = yield* yieldErrors(() =>
+async function* doWork(dbId: string): WorkIterator {
+  let largeObject: Massive | undefined = yield* yieldErrors(() =>
     grabLargeObjectFromDatabase(dbId)
   )
   const bigResult = yield* yieldErrors(() =>
     doExpensiveProcessingOnObject(largeObject)
   )
+  // reclaim memory from largeObject now it is no longer needed
+  largeObject = undefined
   yield* yieldErrors(() =>
     doFinalProcessingOfBigResult(bigResult)
   )
 }
 
-
-// Here the <string> generic should be the context parameter, we will see how
-// this is used later
 const queue = new WorkQueue<string>()
 
-function processDatabaseItem(dbId: string) {
-  // The dbId relates to the <string> generic used above
+function doWorkInTurn(dbId: string): void {
   queue.queueWork(dbId, doWork(dbId))
 }
 
-async function* onOverflow(): Promise<void> => {
+async function* overflowHandler(): Promise<void> => {
   for await (const dbId of queue.overflows()) {
+    // this is one suggestion enabled by the API in which the work is eventually
+    // pushed to the back of the queue to be resumed from scratch
     await queue.waitForSpaceInWorkQueue()
-    // other suggestions include maintaining a Map of failure counts against
-    // dbId in order to decide whether to permanently throw out work that has
-    // failed too many times
     queue.queueWork(dbId, doWork(dbId))
   }
 }
@@ -116,6 +119,7 @@ async function* onOverflow(): Promise<void> => {
 function startQueue(): Promise<void> {
   return Promise.all([
     queue.start(),
+    overflowHandler(),
   ])
 }
 ```
@@ -124,4 +128,4 @@ function startQueue(): Promise<void> {
 
 The `stop` method may be called on the queue to stop processing.
 This return a promise which resolves after the current piece of asynchronous work performed by the queue succeeds or fails.
-The promise returned by the `start` method also resolves at this point, and an async generator created by the `overflows` method will be completed.
+The promise returned by the `start` method also resolves at this point, and any async iterator created by the `overflows` method will be completed.
