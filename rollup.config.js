@@ -13,5 +13,5 @@ module.exports = {
     }),
   ],
   watch: { clearScreen: false },
-  output: [{ file: 'dist.es2018/index.js', format: 'es' }],
+  output: [{ file: 'dist.es2018/index.js', format: 'cjs' }],
 }
