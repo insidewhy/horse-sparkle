@@ -81,6 +81,8 @@ function doWorkInTurn(dbId: string): void {
 }
 ```
 
+Work dequeued in this manner will not reset or increment the `consecutiveErrorCount` property passed to the next `onError` callback.
+
 ### Error behaviour
 
 In the previous example the work queue will continuously process information without delay.

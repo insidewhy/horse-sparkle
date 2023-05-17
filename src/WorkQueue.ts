@@ -1,5 +1,7 @@
 export const dequeueWork = Symbol()
 
+export type DequeueWork = typeof dequeueWork
+
 export type WorkIterator = AsyncIterator<Error | typeof dequeueWork | undefined, void, void>
 
 export type WorkErrorHandler = (
@@ -88,7 +90,9 @@ export class WorkQueue<ContextT> {
         break
       }
       if (!done) {
-        if (value !== dequeueWork) {
+        if (value === dequeueWork) {
+          iterator.return?.()
+        } else {
           if (this.onError) {
             await this.onError(value, consecutiveFailureCount)
           }
