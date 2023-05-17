@@ -1,6 +1,6 @@
 {
   "name": "horse-sparkle",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "work queue for node/typescript environments and the browser",
   "author": "insidewhy <github@chilon.net>",
   "license": "ISC",

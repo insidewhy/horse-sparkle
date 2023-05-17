@@ -1,4 +1,6 @@
-export type WorkIterator = AsyncIterator<Error | undefined, void, void>
+export const dequeueWork = Symbol()
+
+export type WorkIterator = AsyncIterator<Error | typeof dequeueWork | undefined, void, void>
 
 export type WorkErrorHandler = (
   error: Error | undefined,
@@ -86,25 +88,27 @@ export class WorkQueue<ContextT> {
         break
       }
       if (!done) {
-        if (this.onError) {
-          await this.onError(value, consecutiveFailureCount)
-        }
+        if (value !== dequeueWork) {
+          if (this.onError) {
+            await this.onError(value, consecutiveFailureCount)
+          }
 
-        if (!this.running) {
-          break
-        }
-        ++consecutiveFailureCount
+          if (!this.running) {
+            break
+          }
+          ++consecutiveFailureCount
 
-        if (this.queued.length < this.maxQueueLength) {
-          // thanks to the properties of async iterators the work will resume from where it
-          // failed on the next try
-          this.queued.push(nextWork)
-        } else {
-          // the queue overflowed so force the iterator to end and signal that it has been
-          // dequeued
-          iterator.return?.()
-          this.pendingDequeues.push(context)
-          this.signalPendingDequeuesOrStop?.()
+          if (this.queued.length < this.maxQueueLength) {
+            // thanks to the properties of async iterators the work will resume from where it
+            // failed on the next try
+            this.queued.push(nextWork)
+          } else {
+            // the queue overflowed so force the iterator to end and signal that it has been
+            // dequeued
+            iterator.return?.()
+            this.pendingDequeues.push(context)
+            this.signalPendingDequeuesOrStop?.()
+          }
         }
       } else {
         consecutiveFailureCount = 0

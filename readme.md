@@ -50,6 +50,37 @@ Any thrown error will be yielded by the generator, this causes the work queue to
 The work queue will then push the piece of work to the back of the queue and once the work is back at the head of the queue it will resume the task from where it left off e.g.
 If `largeObject` was retrieved and `bigResult` was calculated, but then `doFinalProcessingOfBigResult` threw an error, when the work is tried the next time it will not have to calculate `bigResult` again, instead the work will resume with another attempt to call `doFinalProcessingOfBigResult`.
 
+### Removing work from the queue
+
+Certain work should not be retried in all scenarios, for example an unrecoverable error may be detected.
+A work item may remove itself from the work queue by yielding `dequeueWork` or throwing `dequeueWork` within a `yieldErrors` callback.
+
+```typescript
+import { yieldErrors, dequeueWork, WorkQueue, WorkIterator } from 'horse-sparkle'
+
+async function* doWork(dbId: string): WorkIterator {
+  const largeObject = yield* yieldErrors(() => grabLargeObjectFromDatabase(dbId))
+  if (largeObject.hasUnrecoverableError) {
+    yield dequeueWork
+  }
+  const bigResult = yield* yieldErrors(() => {
+    const processedResult = doExpensiveProcessingOnObject(largeObject)
+    if (processedResult.noGood) {
+      throw dequeueWork
+    }
+    return processedResult
+  })
+  yield* yieldErrors(() => doFinalProcessingOfBigResult(bigResult))
+}
+
+const queue = new WorkQueue<string>()
+queue.start()
+
+function doWorkInTurn(dbId: string): void {
+  queue.queueWork(dbId, doWork(dbId))
+}
+```
+
 ### Error behaviour
 
 In the previous example the work queue will continuously process information without delay.

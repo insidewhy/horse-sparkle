@@ -1,6 +1,6 @@
 import delay from 'delay'
 
-import { WorkErrorHandler, WorkIterator, WorkQueue } from './WorkQueue'
+import { WorkErrorHandler, WorkIterator, WorkQueue, dequeueWork } from './WorkQueue'
 import { expectAfterSomeTicks, expectTimerCountAfterSomeTicks } from './expectAfterSomeTicks'
 
 describe('WorkQueue', () => {
@@ -74,9 +74,71 @@ describe('WorkQueue', () => {
     expect(signals).toEqual([1])
 
     await expectTimerCountAfterSomeTicks(1)
-    jest.advanceTimersByTime(3)
+    jest.advanceTimersByTime(1)
     await Promise.resolve()
     expect(signals).toEqual([1, 2])
+
+    await queue.stop()
+    await started
+  })
+
+  it('allows work to dequeue itself by yielding dequeueWork', async () => {
+    const queue = buildWorkQueue()
+    const started = queue.start()
+    const signals: number[] = []
+
+    queue.queueWork(
+      'a',
+      (async function* (): WorkIterator {
+        await delay(1)
+        signals.push(1)
+      })(),
+    )
+    queue.queueWork(
+      'b',
+      (async function* (): WorkIterator {
+        await delay(1)
+        yield dequeueWork
+        signals.push(2)
+      })(),
+    )
+    queue.queueWork(
+      'c',
+      (async function* (): WorkIterator {
+        await delay(1)
+        signals.push(3)
+      })(),
+    )
+
+    await expectTimerCountAfterSomeTicks(1)
+    jest.advanceTimersByTime(1)
+    await Promise.resolve()
+    expect(signals).toEqual([1])
+
+    await expectTimerCountAfterSomeTicks(1)
+    jest.advanceTimersByTime(1)
+    await Promise.resolve()
+    expect(signals).toEqual([1])
+
+    // ensure processing continues after dequeue
+    await expectTimerCountAfterSomeTicks(1)
+    jest.advanceTimersByTime(1)
+    await Promise.resolve()
+    expect(signals).toEqual([1, 3])
+
+    // ensure dequeued item wasn't added to back of the queue, if it was
+    // then it would be scheduled before the following piece of work:
+    queue.queueWork(
+      'd',
+      (async function* (): WorkIterator {
+        await delay(1)
+        signals.push(4)
+      })(),
+    )
+    await expectTimerCountAfterSomeTicks(1)
+    jest.advanceTimersByTime(1)
+    await Promise.resolve()
+    expect(signals).toEqual([1, 3, 4])
 
     await queue.stop()
     await started
