@@ -1,5 +1,3 @@
-import delay from 'delay'
-
 import { WorkErrorHandler, WorkIterator, WorkQueue, dequeueWork } from './WorkQueue'
 import { expectAfterSomeTicks, expectTimerCountAfterSomeTicks } from './expectAfterSomeTicks'
 
@@ -25,6 +23,9 @@ describe('WorkQueue', () => {
   afterEach(() => {
     jest.useRealTimers()
   })
+
+  const delay = (period: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, period))
 
   it('processes the first piece of work', async () => {
     const queue = buildWorkQueue()
