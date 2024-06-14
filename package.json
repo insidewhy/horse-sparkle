@@ -30,6 +30,7 @@
     "validate-prettiness": "yarn run-prettier -c",
     "make-prettier": "yarn run-prettier --write",
     "test": "yarn jest",
+    "test-coverage": "yarn jest --coverage",
     "test-watch": "yarn jest --watchAll",
     "validate": "yarn test && yarn lint && yarn validate-prettiness"
   },

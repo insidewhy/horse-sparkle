@@ -11,4 +11,5 @@ export default {
     ]
   },
   roots: ['<rootDir>/src'],
+  coveragePathIgnorePatterns: ['expectAfterSomeTicks.ts']
 }
