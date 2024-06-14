@@ -135,10 +135,11 @@ export class WorkQueue<ContextT> {
   /**
    * Queue a new piece of work.
    * This work is represented by an async iterator, it should only yield in case of error.
-   * When an error is detected then the code will asynchronously sleep. The first sleep
-   * will be for `this.minDelay`ms and will double for every consecutive error
-   * up to `this.maxDelay`. Any successful piece of work resets the delay incurred on
-   * the next error back to `this.initialDelay`.
+   * When an error is detected the code calls the `onError` funtion which is passed to the
+   * constructor with the error and the consecutive error count as arguments. The promise
+   * returned by the error handler is awaited before queue processing is contintued; this
+   * enables behaviour such as exponential backoff. Any successfully completed piece of work
+   * resets the consecutive error count.
    */
   queueWork(context: ContextT, iterator: WorkIterator): void {
     if (!this.running) {
