@@ -49,6 +49,20 @@ describe('WorkQueue', () => {
     await started
   })
 
+  it('throws an error when queueing work while the queue is stopped', async () => {
+    const queue = buildWorkQueue()
+    expect(() => {
+      queue.queueWork('b', (async function* (): WorkIterator {})())
+    }).toThrow(Error('Cannot queue work when queue has not been started or has been stopped'))
+  })
+
+  it('throws an error when trying to stop a queue that has not been started', async () => {
+    const queue = buildWorkQueue()
+    expect(queue.stop()).rejects.toEqual(
+      Error('Cannot call stop() on a queue without first calling start()'),
+    )
+  })
+
   it('queues two pieces of work and runs them in order', async () => {
     const queue = buildWorkQueue()
     const started = queue.start()
@@ -405,6 +419,38 @@ describe('WorkQueue', () => {
     await queue.stop()
   })
 
+  it('stops processing queue when stop method is called during an error callback', async () => {
+    const queue = buildWorkQueue(undefined, (_, _count) => delay(100))
+    queue.start()
+    const signals: number[] = []
+
+    queue.queueWork(
+      'a',
+      (async function* (): WorkIterator {
+        signals.push(1)
+        yield
+        signals.push(4)
+      })(),
+    )
+
+    await Promise.resolve()
+    expect(signals).toEqual([1])
+
+    // reach first error
+    await expectTimerCountAfterSomeTicks(1)
+
+    // start first 50ms of error callback, then stop queue
+    jest.advanceTimersByTime(50)
+    const stopPromise = queue.stop()
+
+    // finish error callback
+    jest.advanceTimersByTime(50)
+    await Promise.resolve()
+
+    await stopPromise
+    expect(signals).toEqual([1])
+  })
+
   it('yields dequeued context when trying to push work beyond the queue size', async () => {
     const queue = buildWorkQueue(2)
     queue.start()
@@ -444,6 +490,15 @@ describe('WorkQueue', () => {
     await queue.stop()
     // it should finish after calling stop()
     await overflowPromise
+  })
+
+  it('throws an error when overflows is called more than once on the same instance', async () => {
+    const queue = buildWorkQueue(2)
+    queue.start()
+    queue.overflows().next()
+    await expect(queue.overflows().next()).rejects.toEqual(
+      new Error('There may only be a single consumer of the overflows generator'),
+    )
   })
 
   it('yields dequeued context for requeued work that would exceed the queue limit', async () => {
@@ -498,13 +553,13 @@ describe('WorkQueue', () => {
     await overflowPromise
   })
 
-  it('waitForSpaceInWorkQueue resolves immediately when there is sufficient space', async () => {
+  it('waitForSpaceInWorkQueue method resolves immediately when there is sufficient space', async () => {
     const queue = buildWorkQueue(2)
     queue.start()
     await expect(queue.waitForSpaceInWorkQueue()).resolves.toEqual(undefined)
   })
 
-  it('waitForSpaceInWorkQueue resolves after the work queue has sufficient space', async () => {
+  it('waitForSpaceInWorkQueue method resolves after the work queue has sufficient space', async () => {
     const queue = buildWorkQueue(2)
     queue.start()
 

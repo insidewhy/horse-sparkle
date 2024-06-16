@@ -9,7 +9,12 @@ export default typescriptEslint.config(
     files: ["**/*.ts"],
     plugins: { typescriptEslint },
     rules: {
-      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+        }
+      ],
       "@typescript-eslint/member-delimiter-style": [
         "warn",
         { multiline: { delimiter: "none" } }

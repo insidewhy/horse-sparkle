@@ -75,6 +75,7 @@ export class WorkQueue<ContextT> {
 
       const nextWork = this.queued.shift()
       if (!nextWork) {
+        /* istanbul ignore next */
         throw new Error('Theoretically impossible empty queue state detected')
       } else {
         this.onPendingWork = this.signalPendingWorkOrStop = undefined
